@@ -1,6 +1,9 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:path/path.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:sqflite/sqflite.dart';
 
 import '../data/kerala_meals.dart';
@@ -14,6 +17,9 @@ class DatabaseService {
   static final DatabaseService instance = DatabaseService._();
 
   static Database? _database;
+  void resetDatabaseInstance() {
+  _database = null;
+}
 
   Future<Database> get database async {
     if (_database != null) {
@@ -37,7 +43,6 @@ class DatabaseService {
   }
 
   Future<void> _onDatabaseOpen(Database db) async {
-    // Check if meals table exists and create it if needed
     final tables = await db.rawQuery(
       "SELECT name FROM sqlite_master WHERE type='table' AND name='meals'",
     );
@@ -124,7 +129,6 @@ class DatabaseService {
       'updatedAt': DateTime.now().toUtc().toIso8601String(),
     });
 
-    // Seed meals on first install
     await _seedMeals(db);
   }
 
@@ -136,6 +140,48 @@ class DatabaseService {
       }
     }
   }
+
+  // ==================== BACKUP & RESTORE ====================
+
+  Future<void> backupDatabase() async {
+    final db = await database;
+    final dbPath = db.path;
+
+    final directory = await getTemporaryDirectory();
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    final backupPath = '${directory.path}/pmos_meal_tracker_backup_$timestamp.db';
+
+    // Close database before copying
+    await db.close();
+    _database = null;
+
+    await File(dbPath).copy(backupPath);
+
+    // Re-open database
+    await database;
+
+    await Share.shareXFiles(
+      [XFile(backupPath)],
+      text: 'PMOS Meal Tracker Backup',
+    );
+  }
+
+  Future<void> restoreDatabase(String backupFilePath) async {
+    final db = await database;
+    final dbPath = db.path;
+
+    // Close current database
+    await db.close();
+    _database = null;
+
+    // Replace database file
+    await File(backupFilePath).copy(dbPath);
+
+    // Re-open
+    await database;
+  }
+
+  // ==================== EXISTING METHODS ====================
 
   String _dateKey(DateTime date) {
     return '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';

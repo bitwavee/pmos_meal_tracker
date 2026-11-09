@@ -1,13 +1,45 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:workmanager/workmanager.dart';
 
 import 'screens/onboarding_screen.dart';
+import 'services/backup_callback.dart';
 import 'widgets/app_shell.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialize Workmanager for auto backup
+  await Workmanager().initialize(callbackDispatcher);
+
+  // Schedule daily backup at 2 AM
+  await Workmanager().registerPeriodicTask(
+    "dailyBackup",
+    backupTaskName,
+    frequency: const Duration(hours: 24),
+    initialDelay: _calculateDelayUntil2AM(),
+    constraints: Constraints(
+      networkType: NetworkType.notRequired,
+      requiresBatteryNotLow: false,
+      requiresCharging: false,
+      requiresDeviceIdle: false,
+      requiresStorageNotLow: false,
+    ),
+  );
+
   runApp(const ProviderScope(child: PMOSMealTrackerApp()));
+}
+
+Duration _calculateDelayUntil2AM() {
+  final now = DateTime.now();
+  var next2AM = DateTime(now.year, now.month, now.day, 2, 0);
+
+  if (now.isAfter(next2AM)) {
+    next2AM = next2AM.add(const Duration(days: 1));
+  }
+
+  return next2AM.difference(now);
 }
 
 class PMOSMealTrackerApp extends StatefulWidget {
